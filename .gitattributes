@@ -1,3 +1,6 @@
-* text=lf
+* text eol=lf
+* eol=lf
 
 *.go text
+
+* -text
