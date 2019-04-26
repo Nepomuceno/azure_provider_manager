@@ -20,7 +20,9 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/Azure/azure-sdk-for-go/services/resources/mgmt/2018-02-01/resources"
 
@@ -58,13 +60,74 @@ azreg sync --subcription <SUBSCRIPTION_ID> --input <INPUT_FILE>  --output <OUPUT
 		} else {
 			println(err)
 		}
-		profile := readProfileSync()
+		i := 0
+		for endRegistering := false; !endRegistering; {
+			providers, status := getRegistrationPending(context.Background())
+			if status {
+				i = i + 1
+				fmt.Printf("[DEBUG-%s] Updating %d Resources  \n", time.Now().Format("15:04:05"), len(providers))
+				if i%10 == 0 {
+					for _, providerName := range providers {
+						fmt.Println(providerName)
+					}
+				}
+				time.Sleep(10 * time.Second)
+			} else {
+				endRegistering = true
+			}
+		}
+
+		var profile models.Profile
+		profile = readProfileSync()
+		changeRegistrationForSubscription(
+			context.Background(),
+			true,
+			providersClient,
+			profile.EnabledProviders)
+		changeRegistrationForSubscription(
+			context.Background(),
+			false,
+			providersClient,
+			profile.DisabledProviders)
+		i = 0
+		for endRegistering := false; !endRegistering; {
+			providers, status := getRegistrationPending(context.Background())
+			if status {
+				i = i + 1
+				fmt.Printf("[DEBUG-%s] Updating %d Resources  \n", time.Now().Format("15:04:05"), len(providers))
+				if i%10 == 0 {
+					for _, providerName := range providers {
+						fmt.Println(providerName)
+					}
+				}
+				time.Sleep(10 * time.Second)
+			} else {
+				endRegistering = true
+			}
+		}
 		fmt.Print(profile)
 		// call the VirtualNetworks CreateOrUpdate API
 	},
 }
 
-func readProfileSync() *models.Profile {
+func getRegistrationPending(ctx context.Context) ([]string, bool) {
+
+	var result []string
+	providers, err := providersClient.List(ctx, nil, "")
+	if err == nil {
+		for _, provider := range providers.Values() {
+			state := *provider.RegistrationState
+			if strings.Contains(state, "ing") {
+				result = append(result, *provider.Namespace)
+			}
+		}
+	} else {
+
+	}
+	return result, len(result) > 0
+}
+
+func readProfileSync() models.Profile {
 
 	var profile models.Profile
 
@@ -81,23 +144,24 @@ func readProfileSync() *models.Profile {
 
 		// Therefore, do *NOT* use !os.IsNotExist(err) to test for file existence
 	}
-	return &profile
+	return profile
 }
 
-func changeRegistrationForSubscription(ctx context.Context, register bool, client resources.ProvidersClient, providersToChangeRegister map[string]struct{}) error {
+func changeRegistrationForSubscription(ctx context.Context, register bool, client resources.ProvidersClient, providersToChangeRegister []string) error {
 	var err error
 	var wg sync.WaitGroup
 	wg.Add(len(providersToChangeRegister))
 
-	for providerName := range providersToChangeRegister {
+	for _, providerName := range providersToChangeRegister {
 		go func(p string) {
 			defer wg.Done()
-			fmt.Printf("[DEBUG] Registering Resource Provider %q with namespace", p)
 			if register {
+				fmt.Printf("[DEBUG] Registering Resource Provider %q with namespace\n", p)
 				if innerErr := registerWithSubscription(ctx, p, client); innerErr != nil {
 					err = innerErr
 				}
 			} else {
+				fmt.Printf("[DEBUG] De-Registering Resource Provider %q with namespace\n", p)
 				if innerErr := unregisterWithSubscription(ctx, p, client); innerErr != nil {
 					err = innerErr
 				}
