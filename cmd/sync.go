@@ -117,8 +117,10 @@ func getRegistrationPending(ctx context.Context) ([]string, bool) {
 	if err == nil {
 		for _, provider := range providers.Values() {
 			state := *provider.RegistrationState
-			if strings.Contains(state, "ing") {
-				result = append(result, *provider.Namespace)
+			if supportedResource(*provider.Namespace) {
+				if strings.Contains(state, "ing") {
+					result = append(result, *provider.Namespace)
+				}
 			}
 		}
 	} else {

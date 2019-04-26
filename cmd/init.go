@@ -77,11 +77,13 @@ func readProfile() *models.Profile {
 	if err == nil {
 		providersValues := providersList.Values()
 		for _, prov := range providersValues {
-			if *prov.RegistrationState == "NotRegistered" {
-				disabled = append(disabled, *prov.Namespace)
-			}
-			if *prov.RegistrationState == "Registered" {
-				enabled = append(enabled, *prov.Namespace)
+			if supportedResource(*prov.Namespace) {
+				if *prov.RegistrationState == "NotRegistered" {
+					disabled = append(disabled, *prov.Namespace)
+				}
+				if *prov.RegistrationState == "Registered" {
+					enabled = append(enabled, *prov.Namespace)
+				}
 			}
 		}
 	}

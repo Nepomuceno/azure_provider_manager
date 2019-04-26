@@ -23,6 +23,32 @@ import (
 
 var cfgFile string
 
+var unsupportedResources = []string{"AppDynamics.APM",
+"LiveArena.Broadcast",
+"microsoft.aadiam",
+"Microsoft.BizTalkServices",
+"Microsoft.ContentModerator",
+"Microsoft.CustomerLockbox",
+"Microsoft.DynamicsLcs",
+"Microsoft.EnterpriseKnowledgeGraph",
+"Microsoft.HanaOnAzure",
+"Microsoft.Intune",
+"Microsoft.MachineLearningModelManagement",
+"Microsoft.StorSimple",
+"microsoft.visualstudio",
+"Microsoft.WindowsDefenderATP",
+"Pokitdok.Platform",
+"TrendMicro.DeepSecurity",
+}
+
+func supportedResource(e string) bool {
+    for _, a := range unsupportedResources {
+        if a == e {
+            return false
+        }
+    }
+    return true
+}
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
