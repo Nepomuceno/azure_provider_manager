@@ -15,24 +15,25 @@
 package cmd
 
 import (
-	"os"
+	"context"
 	"encoding/json"
 	"fmt"
-	"context"
-	"sync"
 	"io/ioutil"
+	"os"
+	"sync"
 
 	"github.com/Azure/azure-sdk-for-go/services/resources/mgmt/2018-02-01/resources"
 
 	"github.com/Azure/go-autorest/autorest/azure/auth"
-	"github.com/spf13/cobra"
 	"github.com/nepomuceno/azure_provider_manager/models"
+	"github.com/spf13/cobra"
 )
 
 //var availableResourceProviders []resources.Provider
 var subscriptionSync string
 var inputFileName string
 var outputFileName string
+
 // initCmd represents the add command
 var initCmd = &cobra.Command{
 	Use:   "sync",
@@ -48,14 +49,22 @@ azreg sync --subcription <SUBSCRIPTION_ID> --input <INPUT_FILE>  --output <OUPUT
 `,
 
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Printf("Init profile: %s\n", profile)
+
+		providersClient = resources.NewProvidersClient(subscriptionSync)
+		// create an authorizer from env vars or Azure Managed Service Idenity
+		authorizer, err := auth.NewAuthorizerFromCLI()
+		if err == nil {
+			providersClient.Authorizer = authorizer
+		} else {
+			println(err)
+		}
 		profile := readProfileSync()
 		fmt.Print(profile)
 		// call the VirtualNetworks CreateOrUpdate API
 	},
 }
 
-func  readProfileSync() *models.Profile {
+func readProfileSync() *models.Profile {
 
 	var profile models.Profile
 
@@ -63,16 +72,16 @@ func  readProfileSync() *models.Profile {
 		jsonFile, _ := os.Open(inputFileName)
 		defer jsonFile.Close()
 		file, _ := ioutil.ReadAll(jsonFile)
-		json.Unmarshal(file,&profile)
-	  } else if os.IsNotExist(err) {
+		json.Unmarshal(file, &profile)
+	} else if os.IsNotExist(err) {
 		fmt.Printf("Profile file not found\n")
-	  } else {
-		fmt.Printf("%+v\n",err)
+	} else {
+		fmt.Printf("%+v\n", err)
 		// Schrodinger: file may or may not exist. See err for details.
-	  
+
 		// Therefore, do *NOT* use !os.IsNotExist(err) to test for file existence
-	  }
-	return &profile;
+	}
+	return &profile
 }
 
 func changeRegistrationForSubscription(ctx context.Context, register bool, client resources.ProvidersClient, providersToChangeRegister map[string]struct{}) error {
@@ -120,10 +129,6 @@ func registerWithSubscription(ctx context.Context, providerName string, client r
 func init() {
 	rootCmd.AddCommand(initCmd)
 
-	// Here you will define your flags and configuration settings.
-
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
 	initCmd.Flags().StringVarP(&subscriptionSync, "subscription", "s", "", "Subscription id of the")
 	initCmd.MarkFlagRequired("subscription")
 
@@ -132,12 +137,4 @@ func init() {
 
 	initCmd.Flags().StringVarP(&outputFileName, "output", "o", "", "out configuration file tolet the generated file to get to")
 
-	providersClient = resources.NewProvidersClient(subscriptionSync)
-	// create an authorizer from env vars or Azure Managed Service Idenity
-	authorizer, err := auth.NewAuthorizerFromCLI()
-	if err == nil {
-		providersClient.Authorizer = authorizer
-	} else {
-		println(err)
-	}
 }

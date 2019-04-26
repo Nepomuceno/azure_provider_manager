@@ -15,26 +15,24 @@
 package cmd
 
 import (
-	"os"
+	"context"
 	"encoding/json"
 	"fmt"
-	"context"
 	"io/ioutil"
 
 	"github.com/Azure/azure-sdk-for-go/services/resources/mgmt/2018-02-01/resources"
 
 	"github.com/Azure/go-autorest/autorest/azure/auth"
-	"github.com/spf13/cobra"
 	"github.com/nepomuceno/azure_provider_manager/models"
+	"github.com/spf13/cobra"
 )
 
 var subscription string
-var profile string
+var profileName string
+var outputFile string
 var providersClient resources.ProvidersClient
 
-//var availableResourceProviders []resources.Provider
-
-// initCmd represents the add command
+// initCmd represents the init command
 var addCmd = &cobra.Command{
 	Use:   "init",
 	Short: "A brief description of your command",
@@ -49,56 +47,50 @@ azreg init --profile <PROFILE_NAME> --subcription <SUBSCRIPTION_ID> --output <AB
 `,
 
 	Run: func(cmd *cobra.Command, args []string) {
-		profileName, _ := cmd.Flags().GetString("profile")
-		fmt.Printf("Init profile: %s\n", profile)
-		profile := readProfile(&profileName)
+
+		providersClient = resources.NewProvidersClient(subscription)
+		// create an authorizer from env vars or Azure Managed Service Idenity
+		authorizer, err := auth.NewAuthorizerFromCLI()
+		if err == nil {
+			providersClient.Authorizer = authorizer
+		} else {
+			println(err)
+		}
+
+		fmt.Printf("Init profile: %s\n", profileName)
+		profile := readProfile()
 		fmt.Print(profile)
-		// call the VirtualNetworks CreateOrUpdate API
 	},
 }
 
-func  readProfile(profileName *string) *models.Profile {
+func readProfile() *models.Profile {
 
 	var profile models.Profile
+	if outputFile == "" {
 
-	fileName := fmt.Sprintf("./%s.profile.json",*profileName)
-	if _, err := os.Stat(fileName); err == nil {
-		jsonFile, _ := os.Open(fileName)
-		defer jsonFile.Close()
-		file, _ := ioutil.ReadAll(jsonFile)
-		json.Unmarshal(file,&profile)
-	  } else if os.IsNotExist(err) {
-		providersList, err := providersClient.List(context.Background(),nil,"")
-		var enabled []string
-		var disabled []string
-		if err == nil {
-			providersValues := providersList.Values()
-			for _, prov := range providersValues {
+	}
+	fileName := fmt.Sprintf("./%s.profile.json", profileName)
 
-				if(*prov.RegistrationState == "NotRegistered") {
-					disabled = append(disabled,*prov.Namespace)
-				}
-				
-				if(*prov.RegistrationState == "Registered")	{
-					enabled = append(enabled,*prov.Namespace)
-				}
-			} 
-		} else {
-			fmt.Printf("%+v\n",err)
+	providersList, err := providersClient.List(context.Background(), nil, "")
+	var enabled []string
+	var disabled []string
+	if err == nil {
+		providersValues := providersList.Values()
+		for _, prov := range providersValues {
+			if *prov.RegistrationState == "NotRegistered" {
+				disabled = append(disabled, *prov.Namespace)
+			}
+			if *prov.RegistrationState == "Registered" {
+				enabled = append(enabled, *prov.Namespace)
+			}
 		}
-		file := &models.Profile{*profileName,enabled,disabled}
-		profile = *file;
-		content,_ := json.Marshal(file)
-		ioutil.WriteFile(fmt.Sprintf("./%s.profile.json",*profileName),content,0644)
-		fmt.Println(string(content))
-		return file;
-	  } else {
-		fmt.Printf("%+v\n",err)
-		// Schrodinger: file may or may not exist. See err for details.
-	  
-		// Therefore, do *NOT* use !os.IsNotExist(err) to test for file existence
-	  }
-	return &profile;
+	}
+	file := &models.Profile{profileName, enabled, disabled}
+	profile = *file
+	content, _ := json.Marshal(file)
+	ioutil.WriteFile(fileName, content, 0644)
+	fmt.Println(string(content))
+	return &profile
 }
 
 func init() {
@@ -108,21 +100,8 @@ func init() {
 
 	// Cobra supports Persistent Flags which will work for this command
 	// and all subcommands, e.g.:
-	addCmd.PersistentFlags().StringVarP(&subscription, "subscription", "s", "", "Subscription id of the")
-	addCmd.MarkPersistentFlagRequired("subscription")
-	rootCmd.PersistentFlags().StringVar(&profile, "profile", "default", "profile to be used")
-	
-
-	providersClient = resources.NewProvidersClient(subscription)
-		// create an authorizer from env vars or Azure Managed Service Idenity
-		authorizer, err := auth.NewAuthorizerFromCLI()
-		if err == nil {
-			providersClient.Authorizer = authorizer
-		} else {
-			println(err)
-		}
-
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	// addCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+	addCmd.Flags().StringVarP(&subscription, "subscription", "s", "", "Subscription id of the")
+	addCmd.MarkFlagRequired("subscription")
+	addCmd.Flags().StringVarP(&profileName, "profile", "p", "default", "profile to be used")
+	addCmd.Flags().StringVarP(&outputFile, "output", "o", "", "Output file to put the data on")
 }
